@@ -69,3 +69,13 @@ chap6/stack.yaml
 chap6/stack.yaml.lock
 chap6/app/Main.hs
 chap6/test/Spec.hs
+chap7/ChangeLog.md
+chap7/chap7.cabal
+chap7/LICENSE
+chap7/package.yaml
+chap7/README.md
+chap7/Setup.hs
+chap7/stack.yaml
+chap7/stack.yaml.lock
+chap7/app/Main.hs
+chap7/test/Spec.hs
