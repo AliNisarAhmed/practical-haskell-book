@@ -1,9 +1,15 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NamedFieldPuns #-}
 
 module Lib where
 
 import Control.Monad
+import Control.Monad.Logic (Logic, MonadLogic (interleave, (>>-)))
+import Control.Monad.Reader
+import Control.Monad.State
+import Control.Monad.Writer (MonadWriter, Writer, WriterT, execWriter, execWriterT, runWriter, tell)
 import Data.List (unfoldr)
+import Data.Monoid (Sum (..))
 import Data.Set (Set)
 import qualified Data.Set as S
 
@@ -234,4 +240,170 @@ t8 = purchaseToTransaction (Purchase indiv [p1, p2, p3, p5])
 
 t9 = purchaseToTransaction (Purchase indiv [p1, p2, p3])
 
+listOfTransactions = [t1, t2, t3, t4, t5, t6, t7, t8, t9]
+
 ------
+
+paths1 :: [(Int, Int)] -> Int -> Int -> [[Int]]
+paths1 edges start end = do
+  (e_start, e_end) <- edges
+  guard $ e_start == start
+  subpath <- paths1 edges e_end end
+  return $ start : subpath
+
+ps :: [(Int, Int)]
+ps = [(2013, 501), (2013, 1004), (501, 2558), (1004, 2558)]
+
+ps2 :: [(Int, Int)]
+ps2 = [(2013, 501), (501, 2558), (501, 1004), (1004, 501), (2013, 2558)]
+
+paths2 :: [(Int, Int)] -> Int -> Int -> [[Int]]
+paths2 edges start end =
+  let e_paths = do
+        (e_start, e_end) <- edges
+        guard $ e_start == start
+        subpath <- paths2 edges e_end end
+        return $ start : subpath
+   in if start == end
+        then return [end] `mplus` e_paths
+        else e_paths
+
+-- writing paths using Logic Monad
+
+pathsL :: [(Int, Int)] -> Int -> Int -> Logic [Int]
+pathsL edges start end =
+  let e_paths = do
+        (e_start, e_end) <- choices edges
+        guard $ e_start == start
+        subpath <- pathsL edges e_end end
+        return $ start : subpath
+   in if start == end
+        then return [end] `mplus` e_paths
+        else e_paths
+
+choices :: [a] -> Logic a
+choices = msum . map return
+
+pathsL2 :: [(Int, Int)] -> Int -> Int -> Logic [Int]
+pathsL2 edges start end =
+  let e_paths =
+        choices edges
+          >>= \(e_start, e_end) ->
+            guard (e_start == start)
+              >> pathsL edges e_end end
+                >>= \subpath ->
+                  return $ start : subpath
+   in if start == end
+        then return [end] `mplus` e_paths
+        else e_paths
+
+pathsLFair :: [(Int, Int)] -> Int -> Int -> Logic [Int]
+pathsLFair edges start end =
+  let e_paths =
+        choices edges >>- \(e_start, e_end) ->
+          guard (e_start == start)
+            >> pathsLFair edges e_end end >>- \subpath ->
+              return $ start : subpath
+   in if start == end
+        then return [end] `interleave` e_paths
+        else e_paths
+
+-- Combining values under a Monad
+addPrefix :: String -> Reader String String
+addPrefix s = ask >>= (\p -> return $ p ++ s)
+
+addPrefixL :: [String] -> Reader String [String]
+addPrefixL = mapM addPrefix
+
+logInformation :: [String] -> Writer String ()
+logInformation = mapM_ (\s -> tell (s ++ "\n"))
+
+sequence2 :: Monad m => [m a] -> m [a]
+sequence2 [] = return []
+sequence2 (x : xs) = x >>= \a -> (a :) <$> sequence2 xs
+
+mapM2 :: Monad m => (a -> m b) -> [a] -> m [b]
+mapM2 _ [] = return []
+mapM2 f (x : xs) = f x >>= \b -> (b :) <$> mapM2 f xs
+
+factorialSteps :: Integer -> Writer (Sum Integer) Integer
+factorialSteps n = foldM (\f x -> tell (Sum 1) >> return (f * x)) 1 [1 .. n]
+
+powerset2 :: [a] -> [[a]]
+powerset2 = filterM (\_ -> [False, True])
+
+--
+
+pathsWriter :: [(Int, Int)] -> Int -> Int -> [[Int]]
+pathsWriter edges start end = map execWriter (pathsWriter' edges start end)
+
+pathsWriter' :: [(Int, Int)] -> Int -> Int -> [Writer [Int] ()]
+pathsWriter' edges start end =
+  let e_paths = do
+        (e_start, e_end) <- edges
+        guard $ e_start == start
+        subpath <- pathsWriter' edges e_end end
+        return $ do
+          tell [start]
+          subpath
+   in if start == end
+        then tell [start] : e_paths
+        else e_paths
+
+pathsWriterT' :: [(Int, Int)] -> Int -> Int -> WriterT [Int] [] ()
+pathsWriterT' edges start end =
+  let e_paths = do
+        (e_start, e_end) <- lift edges
+        guard $ e_start == start
+        tell [start]
+        pathsWriterT' edges e_end end
+   in if start == end
+        then tell [start] `mplus` e_paths
+        else e_paths
+
+pathsWriterT :: [(Int, Int)] -> Int -> Int -> [[Int]]
+pathsWriterT edges start end = execWriterT (pathsWriterT' edges start end)
+
+readerWriterExample :: ReaderT Int (Writer String) Int
+readerWriterExample = do
+  x <- ask
+  lift . tell $ show x
+  return $ x + 1
+
+--- exercise 7-6
+
+factorialState :: StateT Integer (State Integer) ()
+factorialState = do
+  counter <- get
+  x <- lift get
+  if counter == 0
+    then return ()
+    else do
+      put $ counter - 1
+      lift . put $ x * counter
+      factorialState
+
+runFact :: Integer -> Integer
+runFact x = execState (execStateT factorialState x) 1
+
+-- exercise 7-7
+
+-- pathsWriterT' :: [(Int, Int)] -> Int -> Int -> WriterT [Int] [] ()
+-- pathsWriterT' edges start end =
+--   let e_paths = do
+--         (e_start, e_end) <- lift edges
+--         guard $ e_start == start
+--         tell [start]
+--         pathsWriterT' edges e_end end
+--    in if start == end
+--         then tell [start] `mplus` e_paths
+--         else e_paths
+
+-- pathsMT ::
+--   (MonadReader [(Int, Int)] m, MonadWriter [[Int]] m) =>
+--   Int ->
+--   Int ->
+--   m [[Int]]
+-- pathsMT start end = do
+--   (e_start, e_end) <- ask
+--   _
