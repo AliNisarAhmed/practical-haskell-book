@@ -400,10 +400,28 @@ runFact x = execState (execStateT factorialState x) 1
 --         else e_paths
 
 -- pathsMT ::
---   (MonadReader [(Int, Int)] m, MonadWriter [[Int]] m) =>
+--   (MonadReader [(Int, Int)] m, MonadWriter [[Int]] m, MonadPlus m, Monad m) =>
 --   Int ->
 --   Int ->
---   m [[Int]]
--- pathsMT start end = do
---   (e_start, e_end) <- ask
---   _
+--   m ()
+-- pathsMT start end =
+--   let e_paths = do
+--         edges <- ask
+--         (e_start, e_end) <- msum $ map return edges
+--         guard $ e_start == start
+--         tell [start]
+--         pathsMT e_end end
+--    in if start == end
+--         then _ `mplus` e_paths
+--         else e_paths
+
+pathsWriterT2 :: (MonadReader [(Int, Int)] m, MonadWriter [Int] m, MonadPlus m) => Int -> Int -> m ()
+pathsWriterT2 start end =
+  let e_paths =
+        ask >>= \edges ->
+          (msum $ map return edges) >>= \(e_start, e_end) ->
+            (guard $ e_start == start) >>= \_ ->
+              tell [start] >> pathsWriterT2 e_end end
+   in if start == end
+        then tell [start] `mplus` e_paths
+        else e_paths
