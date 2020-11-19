@@ -79,3 +79,12 @@ chap7/stack.yaml
 chap7/stack.yaml.lock
 chap7/app/Main.hs
 chap7/test/Spec.hs
+chap8/ChangeLog.md
+chap8/chap8.cabal
+chap8/LICENSE
+chap8/package.yaml
+chap8/README.md
+chap8/Setup.hs
+chap8/stack.yaml
+chap8/stack.yaml.lock
+chap8/test/Spec.hs
