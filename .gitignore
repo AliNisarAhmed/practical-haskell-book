@@ -88,3 +88,12 @@ chap8/Setup.hs
 chap8/stack.yaml
 chap8/stack.yaml.lock
 chap8/test/Spec.hs
+chap9/ChangeLog.md
+chap9/chap9.cabal
+chap9/LICENSE
+chap9/README.md
+chap9/Setup.hs
+chap9/stack.yaml
+chap9/stack.yaml.lock
+chap9/src/Lib.hs
+chap9/test/Spec.hs
