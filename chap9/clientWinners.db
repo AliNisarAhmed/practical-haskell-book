@@ -1,6 +1,1 @@
-("GovOrg 1 NASA",False,1592)
-
-("Company 2 Microsoft (Person \"Ali\" \"Ahmed\") \"Engineer\"",False,2711)
-
-("Individual 3 (Person \"Samrah\" \"Akber\")",True,2783)
-
+("GovOrg { clientId = 1, clientName = \"NASA\" }",True,2357)("Company { clientId = 2, clientName = \"Punchcard\", person = Person { firstName = \"Ali\", lastName = \"Ahmed\" }, duty = \"Developer\" }",False,1066)("Individual { clientId = 3, person = Person { firstName = \"Samrah\", lastName = \"Akber\" } }",False,656)

@@ -1,1 +1,3 @@
-GovOrg { clientId = 1, clientName = \"NASA\" }
+GovOrg { clientId = 1, clientName = "NASA" }
+Company { clientId = 2, clientName = "Punchcard", person = Person { firstName = "Ali", lastName = "Ahmed" }, duty = "Developer" }
+Individual { clientId = 3, person = Person { firstName = "Samrah", lastName = "Akber" } }

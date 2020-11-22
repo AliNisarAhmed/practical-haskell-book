@@ -1,14 +1,25 @@
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Main where
 
+import Control.Error
+import Control.Exception
 import Control.Monad (foldM)
+import Control.Monad.Except
 import Control.Monad.Loops
+import Control.Monad.State
+import Control.Monad.Trans
+import Data.Conduit
+import qualified Data.Conduit.List as L
 import Data.String
+import Data.Typeable
 import Lib
 import System.Environment
 import System.IO
-import System.Random
+import System.IO.Error
+import System.Random (Random (randomIO, randomRIO))
 
 main :: IO ()
 main = do
@@ -211,10 +222,174 @@ storeClientByKinds = do
           clientStr <- hGetLine inh
           let client = (read clientStr) :: Client Int
           let h = getHandle client
-          hPutStrLn h $ show client
+          hPutStrLn h clientStr
       where
         getHandle c =
           case clientKind c of
             GovOrgKind -> gh
             CompanyKind -> ch
             IndividualKind -> ih
+
+------------------------------------------------
+
+-- Error Handling
+
+data CompanyNameError
+  = GovOrgArgument
+  | IndividualArgument
+
+companyName :: Client i -> Either CompanyNameError String
+companyName Company {clientName = n} = Right n
+companyName GovOrg {} = Left GovOrgArgument
+companyName Individual {} = Left IndividualArgument
+
+companyName2 :: MonadError CompanyNameError m => Client i -> m String
+companyName2 Company {clientName = n} = return n
+companyName2 GovOrg {} = throwError GovOrgArgument
+companyName2 Individual {} = throwError IndividualArgument
+
+companyNameDef :: MonadError CompanyNameError m => Client i -> m String
+companyNameDef c = companyName2 c `catchError` (\_ -> return "")
+
+-- Exceptions - or Impure Code Errors
+
+run6 :: IO ()
+run6 =
+  do
+    clients <- fmap lines $ readFile "clients.db"
+    clientsAndWinners <-
+      mapM
+        ( \c -> do
+            (winner :: Bool) <- randomIO
+            (year :: Int) <- randomRIO (0, 3000)
+            return (c, winner, year)
+        )
+        clients
+    writeFile "clientWinners.db" $ concatMap show clientsAndWinners
+    `catch` ( \(e :: IOException) ->
+                if isDoesNotExistError e
+                  then putStr "File does not exist"
+                  else putStrLn $ "Other error: " ++ show e
+            )
+
+run7 :: IO ()
+run7 =
+  do
+    (n1 :: Int) <- fmap read getLine
+    (n2 :: Int) <- fmap read getLine
+    putStrLn $ show n1 ++ " / " ++ show n2 ++ " = " ++ show (n1 `div` n2)
+    `catch` (\(_ :: ErrorCall) -> putStrLn "Error reading number")
+    `catch` ( \(e :: ArithException) -> case e of
+                DivideByZero -> putStrLn "Division by zero"
+                _ -> putStrLn $ "Other error: " ++ show e
+            )
+
+run8 :: IO ()
+run8 =
+  catchJust
+    (\e -> if e == DivideByZero then Just e else Nothing)
+    ( do
+        (n1 :: Int) <- fmap read getLine
+        (n2 :: Int) <- fmap read getLine
+        putStrLn $ show n1 ++ " / " ++ show n2 ++ " = " ++ show (n1 `div` n2)
+        `catch` (\(_ :: ErrorCall) -> putStrLn "Error reading number")
+    )
+    (\_ -> putStrLn "Division by zero")
+
+run9 :: IO ()
+run9 =
+  do
+    throw $ NoMethodError "I dont know what to do"
+    `catch` ( \(e :: SomeException) ->
+                do
+                  putStrLn "An exception was thrown: "
+                  putStrLn $ show e
+            )
+
+-- making out own custom exceptions by making them an instance of Show, Typeable and Exception
+
+data AuthenticationException
+  = UnknownUserName String
+  | PasswordMismatch String
+  | NotEnoughRights String
+  deriving (Show, Typeable)
+
+instance Exception AuthenticationException
+
+run10 :: IO ()
+run10 =
+  do
+    throw $ UnknownUserName "Ali"
+    `catch` ( \(e :: AuthenticationException) -> do
+                putStrLn "Exception"
+                print e
+            )
+
+------- CONDUIT Library Intro --------
+
+sumOneToTen = runConduitPure $ L.sourceList [1 .. 10] .| L.fold (+) 0
+
+sumSquareOdd = runConduitPure $ L.sourceList [1 .. 20] .| L.filter odd .| L.map (\x -> x * x) .| L.fold (+) 0
+
+firstTen = runConduitPure $ L.unfold (\x -> Just (x, x + 1)) 1 .| L.isolate 10 .| L.consume
+
+people :: Monad m => ConduitT (Client i) Person m ()
+people = do
+  client <- await
+  case client of
+    Nothing -> return ()
+    Just c -> do
+      case c of
+        Company {person = p} -> yield p
+        Individual {person = p} -> yield p
+        _ -> return ()
+      people
+
+listOfClients :: [Client Integer]
+listOfClients = [GovOrg 1 "NASA", Individual 2 (Person "Samrah" "Akber"), Company 3 "Punchcard" (Person "Ali" "Ahmed") "Developer"]
+
+onlyPeople =
+  runConduitPure $
+    L.sourceList listOfClients
+      .| people
+      .| L.consume
+
+countGovOrgs :: MonadState Int m => ConduitT (Client i) Void m Int
+countGovOrgs = do
+  client <- await
+  case client of
+    Nothing -> do
+      n <- lift $ get
+      return n
+    Just c -> do
+      case c of
+        GovOrg {} -> lift $ modify (+ 1)
+        _ -> return ()
+      countGovOrgs
+
+run11 :: IO ()
+run11 = print $ execState (runConduit (L.sourceList listOfClients .| countGovOrgs)) 0
+
+winners :: ConduitT (Client i) (Client i, Bool, Int) IO ()
+winners = do
+  client <- await
+  case client of
+    Nothing -> return ()
+    Just c -> do
+      (w :: Bool) <- lift $ randomIO
+      (y :: Int) <- lift $ randomRIO (0, 3000)
+      yield (c, w, y)
+      winners
+
+printWinners :: ConduitT (Client Integer, Bool, Int) Void IO ()
+printWinners = do
+  c <- await
+  case c of
+    Nothing -> return ()
+    Just (client, b, n) -> do
+      lift $ print client
+      lift $ print b
+      lift $ print n
+
+run12 :: IO ()
+run12 = runConduit (L.sourceList listOfClients .| winners .| printWinners)
