@@ -26,6 +26,13 @@ dependencies:
 - errors
 - mtl
 - conduit
+- conduit-extra
+- bytestring
+- network
+- binary
+- binary-conduit
+- cassava
+- cassava-conduit
 
 library:
   source-dirs: src

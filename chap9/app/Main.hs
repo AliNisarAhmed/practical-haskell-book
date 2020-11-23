@@ -1,5 +1,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Main where
@@ -11,11 +13,22 @@ import Control.Monad.Except
 import Control.Monad.Loops
 import Control.Monad.State
 import Control.Monad.Trans
+import Data.Binary (Binary)
+import qualified Data.ByteString.Char8 as BS
 import Data.Conduit
+import qualified Data.Conduit.Binary as B
 import qualified Data.Conduit.List as L
+import Data.Conduit.Network
+import qualified Data.Conduit.Serialization.Binary as S
+import Data.Csv (FromRecord, ToRecord)
+import qualified Data.Csv as Csv
+import qualified Data.Csv.Conduit as Csv
+import Data.Monoid
 import Data.String
 import Data.Typeable
+import GHC.Generics (Generic)
 import Lib
+import Network.Socket
 import System.Environment
 import System.IO
 import System.IO.Error
@@ -29,7 +42,7 @@ main = do
   putStrLn $ "You should travel to year " ++ show year
 
 data Person = Person {firstName :: String, lastName :: String}
-  deriving (Show, Eq, Ord, Read)
+  deriving (Show, Eq, Ord, Read, Generic)
 
 data Client i
   = GovOrg {clientId :: i, clientName :: String}
@@ -393,3 +406,137 @@ printWinners = do
 
 run12 :: IO ()
 run12 = runConduit (L.sourceList listOfClients .| winners .| printWinners)
+
+---- Exercise 9-4
+
+myMapC :: Monad m => (a -> b) -> ConduitT a b m ()
+myMapC f = do
+  input <- await
+  case input of
+    Nothing -> return ()
+    Just x -> do
+      yield $ f x
+      myMapC f
+
+add2 :: IO [Integer]
+add2 = runConduit $ L.sourceList [1, 2, 3] .| myMapC (+ 2) .| L.consume
+
+myFilterC :: Monad m => (a -> Bool) -> ConduitT a a m ()
+myFilterC f = do
+  input <- await
+  case input of
+    Nothing -> return ()
+    Just x -> do
+      if f x
+        then do
+          yield x
+          myFilterC f
+        else myFilterC f
+
+oddRemoved :: IO [Integer]
+oddRemoved = runConduit $ L.sourceList [1, 2, 3, 4, 5] .| myFilterC even .| L.consume
+
+myUnfoldC :: Monad m => (b -> Maybe (a, b)) -> b -> ConduitT i a m ()
+myUnfoldC f b1 = do
+  case f b1 of
+    Nothing -> return ()
+    Just (a, b) -> do
+      yield a
+      myUnfoldC f b
+
+firstTen2 :: [Integer]
+firstTen2 = runConduitPure $ myUnfoldC (\x -> Just (x, x + 1)) 1 .| L.isolate 10 .| L.consume
+
+myFoldC :: Monad m => (b -> a -> b) -> b -> ConduitT a o m b
+myFoldC f b = do
+  input <- await
+  case input of
+    Nothing -> return b
+    Just a -> do
+      myFoldC f (f b a)
+
+sumSquareOdd2 :: Integer
+sumSquareOdd2 = runConduitPure $ L.sourceList [1 .. 20] .| L.filter odd .| L.map (\x -> x * x) .| myFoldC (+) 0
+
+---- Using conduit with Files
+
+winnersFile :: (Monad m, MonadIO m) => ConduitT BS.ByteString BS.ByteString m ()
+winnersFile = do
+  client <- await
+  case client of
+    Nothing -> return ()
+    Just c -> do
+      (w :: Bool) <- liftIO $ randomIO
+      (y :: Int) <- liftIO $ randomRIO (0, 3000)
+      yield $ c <> BS.pack (" " ++ show w ++ " " ++ show y ++ "\n")
+      winnersFile
+
+run13 :: IO ()
+run13 = runConduitRes $ B.sourceFile "clients.db" .| B.lines .| winnersFile .| B.sinkFile "clientWinnersConduit.db"
+
+--- Basic Networking with Conduit
+
+isWinner :: ConduitT BS.ByteString BS.ByteString IO ()
+isWinner = do
+  client <- await
+  case client of
+    Nothing -> return ()
+    Just c -> do
+      lift $ BS.putStrLn c
+      (w :: Bool) <- liftIO $ randomIO
+      (y :: Int) <- liftIO $ randomRIO (0, 3000)
+      yield $ c <> BS.pack (" " ++ show w ++ " " ++ show y)
+      isWinner
+
+serverApp :: AppData -> IO ()
+serverApp d = runConduit $ appSource d .| isWinner .| appSink d
+
+run14 :: IO ()
+run14 = withSocketsDo $ runTCPServer (serverSettings 8900 "*") serverApp
+
+run15 :: IO ()
+run15 = withSocketsDo $ do
+  (name : _) <- getArgs
+  runTCPClient (clientSettings 8900 "127.0.0.1") (clientApp name)
+
+clientApp :: String -> AppData -> IO ()
+clientApp name d = do
+  runConduit $ (yield $ BS.pack name) .| appSink d
+  runConduit $
+    appSource d
+      .| ( do
+             Just w <- await
+             lift $ BS.putStrLn w
+         )
+
+-- run the TCP client using -- withArgs ["Ali"] run15
+-- and if the TCP server is running, it will receive the request
+
+-------- Binary Serialization --------
+
+instance Binary Person
+
+run16 :: IO ()
+run16 = runConduitRes $ L.sourceList clients .| S.conduitEncode .| B.sinkFile "people.db"
+  where
+    clients = [Person "Alejandro" "Serrano", Person "Ali" "Ahmed"]
+
+run17 :: IO ()
+run17 =
+  runConduitRes $
+    B.sourceFile "people.db"
+      .| S.conduitDecode
+      .| L.mapM_ (\(p :: Person) -> lift $ putStrLn $ show p)
+
+--- Handling CSV Files
+
+instance FromRecord Person
+
+instance ToRecord Person
+
+run18 :: IO ()
+run18 =
+  runConduitRes $
+    B.sourceFile "people.db"
+      .| Csv.fromCsvLiftError (userError . show) Csv.defaultDecodeOptions Csv.NoHeader
+      .| L.mapM_ (\(p :: Person) -> lift $ putStrLn $ show p)
