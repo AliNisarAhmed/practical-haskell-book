@@ -97,3 +97,13 @@ chap9/stack.yaml
 chap9/stack.yaml.lock
 chap9/src/Lib.hs
 chap9/test/Spec.hs
+chap10/ChangeLog.md
+chap10/chap10.cabal
+chap10/clients.db
+chap10/LICENSE
+chap10/package.yaml
+chap10/README.md
+chap10/Setup.hs
+chap10/stack.yaml
+chap10/stack.yaml.lock
+chap10/test/Spec.hs
