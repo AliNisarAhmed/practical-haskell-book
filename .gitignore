@@ -107,3 +107,13 @@ chap10/Setup.hs
 chap10/stack.yaml
 chap10/stack.yaml.lock
 chap10/test/Spec.hs
+chap11/ChangeLog.md
+chap11/chap11.cabal
+chap11/example.db
+chap11/LICENSE
+chap11/README.md
+chap11/Setup.hs
+chap11/stack.yaml
+chap11/stack.yaml.lock
+chap11/app/Main.hs
+chap11/test/Spec.hs
