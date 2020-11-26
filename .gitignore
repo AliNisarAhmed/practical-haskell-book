@@ -117,3 +117,12 @@ chap11/stack.yaml
 chap11/stack.yaml.lock
 chap11/app/Main.hs
 chap11/test/Spec.hs
+chap12/ChangeLog.md
+chap12/chap12.cabal
+chap12/example.db
+chap12/example.db-shm
+chap12/example.db-wal
+chap12/LICENSE
+chap12/Setup.hs
+chap12/stack.yaml.lock
+chap12/test/Spec.hs
