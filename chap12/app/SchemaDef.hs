@@ -14,7 +14,7 @@
 
 module SchemaDef where
 
-import Data.Aeson
+import Data.Aeson ()
 import Data.Int (Int64)
 import Database.Persist.TH
 import Gender
@@ -25,6 +25,7 @@ share
 
 	Country json
 		name String
+		canWeSend Bool default=True
 		UniqueCountryName name
 		deriving Show
 	Client json
