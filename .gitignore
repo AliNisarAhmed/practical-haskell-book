@@ -126,3 +126,11 @@ chap12/LICENSE
 chap12/Setup.hs
 chap12/stack.yaml.lock
 chap12/test/Spec.hs
+chap13/ChangeLog.md
+chap13/chap13.cabal
+chap13/LICENSE
+chap13/README.md
+chap13/Setup.hs
+chap13/stack.yaml.lock
+chap13/app/Main.hs
+chap13/test/Spec.hs
