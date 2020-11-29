@@ -1,4 +1,7 @@
+{-# LANGUAGE EmptyDataDecls #-}
+{-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 module Lib where
 
@@ -139,6 +142,8 @@ interpretExpr2 (Not2 e) list =
   case interpretExpr2 e list of
     EBool b -> EBool $ not b
     _ -> error "Type Error"
+interpretExpr2 (IVal2 x) _ = EInt x
+interpretExpr2 (FVal2 x) _ = EFloat x
 
 interpretExpr :: (Eq a, Ord r) => Expr a r -> [(a, Float)] -> r
 interpretExpr (e1 :+: e2) list = interpretExpr e1 list + interpretExpr e2 list
@@ -149,4 +154,114 @@ interpretExpr (e1 :<: e2) list = interpretExpr e1 list < interpretExpr e2 list
 interpretExpr (e1 :<=: e2) list = interpretExpr e1 list <= interpretExpr e2 list
 interpretExpr (e1 :>: e2) list = interpretExpr e1 list > interpretExpr e2 list
 interpretExpr (e1 :>=: e2) list = interpretExpr e1 list >= interpretExpr e2 list
-interpretExpr (AmountOf x) list = _
+interpretExpr (Not e) list = not $ interpretExpr e list
+interpretExpr (AmountOf x) list = foldr (\(n, _) acc -> if x == n then 1 + acc else acc) 0 list
+interpretExpr (PriceOf x) list = foldr (\(n, p) acc -> if x == n then p + acc else acc) 0 list
+interpretExpr TotalNumberOfProducts list = fromIntegral $ length list
+interpretExpr TotalPrice list = foldr (\(_, p) acc -> p + acc) 0 list
+interpretExpr (IVal x) _ = x
+interpretExpr (FVal x) _ = x
+
+-- Empty data declarations
+
+data AllowEverything
+
+data AllowProducts
+
+data AllowPurchases
+
+data Person = Person {firstName :: String, lastName :: String}
+  deriving (Show)
+
+data User r where
+  Admin :: Person -> User AllowEverything
+  StoreManager :: Person -> User AllowEverything
+  StorePerson :: Person -> User AllowProducts
+  Client :: Person -> User AllowPurchases
+
+-- exercise 13-3
+
+data OkForVegetarians
+
+data ContainsPork
+
+data Snack r where
+  Burrito :: a -> Snack ContainsPork
+  BurritoVeg :: a -> Snack OkForVegetarians
+  Shawarma :: a -> Snack ContainsPork
+  ShawarmaVeg :: a -> Snack OkForVegetarians
+
+checkIfOkForVeg :: Snack OkForVegetarians -> String
+checkIfOkForVeg (BurritoVeg a) = "ok"
+checkIfOkForVeg (ShawarmaVeg a) = "Ok"
+
+--- Type level Programming: Functional Dependency and Type Families
+
+data Number
+  = Zero
+  | Succ Number
+  deriving (Show)
+
+one :: Number
+one = Succ Zero
+
+two :: Number
+two = Succ one
+
+plus' :: Number -> Number -> Number
+plus' Zero y = y
+plus' (Succ x) y = Succ $ plus' x y
+
+max' :: Number -> Number -> Number
+max' Zero y = y
+max' x Zero = x
+max' (Succ x) (Succ y) = Succ $ max' x y
+
+min' :: Number -> Number -> Number
+min' Zero _ = Zero
+min' _ Zero = Zero
+min' (Succ x) (Succ y) = Succ $ min' x y
+
+--- Functional Dependencies
+
+class Product p op b | p -> op, p -> b where
+  price :: p -> Float
+  perform :: p -> op -> String
+  testOperation :: p -> op
+  whichBag :: p -> b
+
+data TimeMachine = TimeMachine {model :: String}
+  deriving (Show)
+
+data TimeMachineOps = Travel Integer | Park deriving (Show)
+
+instance Product TimeMachine TimeMachineOps BagKind where
+  price _ = 1000.0
+  perform (TimeMachine m) (Travel y) = "Travelling to " ++ " with " ++ m
+  perform (TimeMachine m) Park = "Parking time machine " ++ m
+  testOperation _ = Travel 0
+  whichBag _ = BigBag
+
+totalAmount :: Product p op b => [p] -> Float
+totalAmount = foldr (+) 0.0 . map price
+
+performTest :: Product p op b => p -> String
+performTest p = perform p $ testOperation p
+
+data Book = Book {title :: String, author :: String, rating :: Integer}
+  deriving (Show)
+
+data BookOps = Read | Highlight | WriteCritique deriving (Show)
+
+instance Product Book BookOps BagKind where
+  price _ = 500.0
+  perform _ _ = "What??"
+  testOperation _ = Read
+  whichBag _ = SmallBag
+
+-- exercise 13-5
+
+data BagKind
+  = BigBag
+  | SmallBag
+  deriving (Show)
